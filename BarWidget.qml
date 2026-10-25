@@ -9,7 +9,7 @@ import "Model.js" as Model
 // Left click opens the details panel, right click toggles connection.
 BarWidget {
   id: root
-  moduleName: "bro.amneziawg"
+  moduleName: "io.github.BroFrank.omnezia"
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
@@ -46,7 +46,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "bro.amneziawg"
+    target: "io.github.BroFrank.omnezia"
     function open(): void { root.open() }
     function close(): void { root.close() }
     function show(): void { root.open() }
@@ -62,7 +62,8 @@ BarWidget {
     tooltipText: "AmneziaWG VPN"
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggle()
-      else root.toggle()
+      else if (root.opened) root.close()
+      else root.open()
     }
   }
 }

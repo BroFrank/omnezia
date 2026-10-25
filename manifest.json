@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "bro.amneziawg",
-  "name": "AmneziaWG VPN",
+  "id": "io.github.BroFrank.omnezia",
+  "name": "omnezia",
   "version": "0.1.0",
   "author": "bro",
   "license": "MIT",

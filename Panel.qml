@@ -11,8 +11,8 @@ import "Model.js" as Model
 // Loaded via Loader in BarWidget.qml; receives anchorItem and hostWidget from it.
 Panel {
   id: root
-  moduleName: "bro.amneziawg"
-  ipcTarget: "bro.amneziawg"
+  moduleName: "io.github.BroFrank.omnezia"
+  ipcTarget: "io.github.BroFrank.omnezia"
   manageIpc: false
 
   property var anchorItem: null
