@@ -10,11 +10,10 @@
     "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "Panel.qml"
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "AmneziaWG",
-    "description": "Connect to AmneziaWG VPN servers, manage profiles, and toggle connection status.",
     "category": "Network",
     "allowMultiple": false,
     "defaultSection": "right",

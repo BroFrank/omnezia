@@ -1,5 +1,3 @@
-pragma ComponentBehavior: Bound
-
 /*
  * Model.js — WireGuard / AmneziaWG config parsing utilities
  *

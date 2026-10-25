@@ -36,7 +36,7 @@ Item {
   property int transferBytesSent: 0
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 10, 5, 3600)
-  readonly string profilesDir: Quickshell.env("HOME") + "/.config/omnezia/profiles"
+  readonly property string profilesDir: Quickshell.env("HOME") + "/.config/omnezia/profiles"
 
   // Process outputs
   property string _statusOutput: ""

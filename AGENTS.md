@@ -82,6 +82,7 @@ null = "(off)" in WireGuard config text format.
 - [x] Kind and entry point agree (bar-widget → Panel.qml)
 - [x] Every referenced file exists on disk
 - [x] No forbidden ID (`bro.amneziawg` is OK, not `omarchy.*`)
+- [x] Git initialized with first commit (582eb8b)
 - [ ] Plugin folder has no symlinks
 - [ ] Manual testing: panel opens/closes, toggle works, profile management
 
@@ -90,6 +91,7 @@ null = "(off)" in WireGuard config text format.
 - Commit after each logical change
 - Use conventional commit messages: `feat:`, `fix:`, `refactor:`, `docs:`
 - Tag releases with version numbers matching manifest version
+- First commit (582eb8b): initial plugin with all core files
 
 ## Manual Testing Required
 

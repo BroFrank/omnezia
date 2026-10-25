@@ -1,16 +1,24 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
+import "Model.js" as Model
 
+// Details panel for AmneziaWG VPN bar widget.
+// Loaded via Loader in BarWidget.qml; receives anchorItem and hostWidget from it.
 Panel {
   id: root
   moduleName: "bro.amneziawg"
   ipcTarget: "bro.amneziawg"
   manageIpc: false
 
+  property var anchorItem: null
+  property var hostWidget: null
+  readonly property var barIdentity: hostWidget || root
+
+  // ---- State
   property string focusSection: "header"
   property int profileIndex: 0
   property bool cursorActive: false
@@ -18,28 +26,24 @@ Panel {
   property string newProfileName: ""
   property string rawConfigInput: ""
 
-  // References to panel children for navigation
-  readonly property Item headerArea: panel.loadedContent ? panel.loadedContent.headerArea : null
-  readonly property Item profileList: panel.loadedContent ? panel.loadedContent.profileList : null
-  readonly property Item configEditor: panel.loadedContent ? panel.loadedContent.configEditor : null
+  // Service — inline component for this panel
+  Service {
+    id: service
+    settings: root.settings
+    interfaceName: "wg0"
+  }
 
   readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  // Service references from BarWidget.qml via Loader
-  readonly property var service: panel.loadedContent ? panel.loadedContent.service : null
-  readonly property bool connected: service ? service.connected : false
-  readonly property bool busy: service ? service.busy : false
-  readonly property string statusText: service ? service.statusText : ""
-  readonly property string lastError: service ? service.lastError : ""
-  readonly property var profiles: service ? service.profiles : []
-  readonly property var currentProfile: service ? service.currentProfile : null
+  readonly property bool connected: service.connected
+  readonly property bool busy: service.busy
+  readonly property var profiles: service.profiles
+  readonly property var currentProfile: service.currentProfile
 
-  readonly property bool showProfiles: profiles.length > 0 || service && service.profilesLoaded
-  readonly property bool showConfigEditor: configEditMode || !currentProfile
-
-  onOpenedChanged: if (opened) {
+  // ---- Panel lifecycle
+  function open() {
     cursorActive = false
     configEditMode = false
     rawConfigInput = ""
@@ -48,68 +52,74 @@ Panel {
       service.loadProfiles()
       service.refreshStatus()
     }
-    Qt.callLater(function() { if (panel.loadedContent) panel.loadedContent.forceActiveFocus() })
+    root.controller.show()
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
-  Service {
-    id: service
-    settings: root.settings
-    interfaceName: "wg0"
+  function close() {
+    root.controller.hide()
   }
 
-  ShellIpc {
-    target: root.ipcTarget
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { service.toggle() }
-    function refresh(): string { if (service) service.refresh(); return "ok" }
+  function toggle() {
+    if (root.opened) root.close()
+    else service.toggle()
   }
 
-  BarIconButton {
-    id: button
-    anchors.fill: parent
-    bar: root.bar
-    iconComponent: Component {
-      Item {
-        AmneziaIcon {
-          x: (parent.width - width) / 2
-          y: (parent.height - height) / 2
-          iconSize: button.iconSize
-          color: connected ? bar.foreground : Qt.darker(bar.foreground, 1.55)
-        }
+  function switchPanel(direction) {
+    if (root.bar && typeof root.bar.switchPanelFrom === "function")
+      return root.bar.switchPanelFrom(root.barIdentity, direction)
+    return false
+  }
+
+  // ---- Navigation helpers
+  function moveCursor(dx, dy) {
+    cursorActive = true
+    if (dy !== 0) {
+      var showProfiles = profiles.length > 0 || service.profilesLoaded
+      var showConfigEditor = configEditMode || !currentProfile
+      if (focusSection === "header" && dy > 0 && showProfiles) focusSection = "profiles"
+      else if (focusSection === "profiles" && dy < 0) focusSection = "header"
+      else if (focusSection === "profiles" && dy > 0 && showConfigEditor) focusSection = "config"
+      else if (focusSection === "config" && dy < 0) focusSection = "profiles"
+
+      if (focusSection === "profiles") {
+        profileIndex = Math.max(0, Math.min(profiles.length - 1, profileIndex + dy))
       }
     }
-    onPressed: function(buttonCode) {
-      if (buttonCode === Qt.RightButton) service.toggle()
-      else if (buttonCode === Qt.MiddleButton) service.refresh()
-      else root.toggle()
+  }
+
+  function activateCursor() {
+    if (cursorActive) {
+      if (focusSection === "header") service.toggle()
+      else if (focusSection === "profiles" && profiles.length > 0) {
+        var selected = profiles[Math.max(0, Math.min(profileIndex, profiles.length - 1))]
+        service.loadProfile(selected)
+      }
     }
   }
 
+  function setProfileCursor(index) {
+    cursorActive = true
+    focusSection = "profiles"
+    profileIndex = index
+  }
+
+  // ---- UI content
   KeyboardPanel {
     id: panel
-    anchorItem: button
-    owner: root
+    anchorItem: root.anchorItem
+    owner: root.barIdentity
     bar: root.bar
     open: root.opened
-    focusTarget: panel.loadedContent
+    focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(panel.loadedContentHeight, Style.space(560))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(560))
 
-    content: PanelKeyCatcher {
+    PanelKeyCatcher {
       id: keyCatcher
-      property alias headerArea: headerArea
-      property alias profileList: profileList
-      property alias configEditor: configEditor
-      implicitHeight: column.implicitHeight
       anchors.fill: parent
-      onMoveRequested: function(dx, dy) {
-        if (!root.cursorActive) { root.cursorActive = true; return }
-        root.moveCursor(dx, dy)
-      }
-      onActivateRequested: if (root.cursorActive) root.activateCursor()
+      onMoveRequested: function(dx, dy) { root.moveCursor(dx, dy) }
+      onActivateRequested: if (cursorActive) root.activateCursor()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -131,7 +141,6 @@ Panel {
 
           // Header section with connection status and toggle
           Item {
-            id: headerArea
             width: parent.width
             implicitHeight: hero.implicitHeight
 
@@ -143,9 +152,12 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: connected ? 1.0 : 0.5
+
               iconComponent: Component {
                 Item {
                   AmneziaIcon {
+                    x: (parent.width - width) / 2
+                    y: (parent.height - height) / 2
                     iconSize: Style.font.display
                     color: connected ? root.foreground : root.dim
                   }
@@ -173,10 +185,10 @@ Panel {
           // Error/status messages
           Text {
             textFormat: Text.PlainText
-            visible: lastError !== "" || service && service.actionStatus !== ""
+            visible: service.lastError !== "" || service.actionStatus !== ""
             width: parent.width
-            text: lastError !== "" ? lastError : (service && service.actionStatus ? service.actionStatus : "")
-            color: lastError !== "" ? root.urgent : root.dim
+            text: service.lastError !== "" ? service.lastError : (service.actionStatus ? service.actionStatus : "")
+            color: service.lastError !== "" ? root.urgent : root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
@@ -184,7 +196,7 @@ Panel {
 
           // Not installed message
           CursorSurface {
-            visible: !service || !service.whichProcess.running === false
+            visible: !service.whichProcess.running
             width: parent.width
             implicitHeight: missingText.implicitHeight + Style.spacing.rowPaddingX
             foreground: root.foreground
@@ -205,12 +217,12 @@ Panel {
 
           // Profile list section
           PanelSeparator {
-            visible: showProfiles && profiles.length > 0
+            visible: profiles.length > 0 && !configEditMode
             foreground: root.foreground
           }
 
           Column {
-            visible: showProfiles && profiles.length > 0
+            visible: profiles.length > 0 && !configEditMode
             width: parent.width
             spacing: Style.space(10)
 
@@ -236,15 +248,14 @@ Panel {
                 required property int index
                 width: profileList.width
                 profileName: modelData
-                isActive: service && currentProfile && currentProfile.name === modelData
+                isActive: currentProfile && currentProfile.name === modelData
                 rowIndex: index
               }
             }
 
-            // Add new profile button
             PanelActionButton {
               visible: true
-              iconText: "󰅕"  // plus icon
+              iconText: "󰅕"
               tooltipText: "Add new profile"
               foreground: root.foreground
               fontFamily: root.fontFamily
@@ -258,7 +269,7 @@ Panel {
 
           // Config editor section
           PanelSeparator {
-            visible: configEditor && configEditMode
+            visible: configEditMode
             foreground: root.foreground
           }
 
@@ -280,7 +291,6 @@ Panel {
               placeholderText: "Profile name (e.g., Germany, USA)"
               text: newProfileName
               onTextChanged: newProfileName = text
-              onAccepted: configEditor.forceActiveFocus()
               Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
                   configEditMode = false
@@ -293,11 +303,10 @@ Panel {
             TextEdit {
               width: parent.width
               height: Style.space(200)
-              foreground: root.foreground
+              color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
               text: rawConfigInput
-              placeholderText: "[Interface]\nPrivateKey = ...\nAddress = 10.244.0.2/32\n\n[Peer]\nPublicKey = ...\nEndpoint = server.example.com:51820\nAllowedIPs = 0.0.0.0/0, ::/0"
               wrapMode: TextEdit.Wrap
 
               Keys.onPressed: function(event) {
@@ -315,18 +324,16 @@ Panel {
 
               PanelActionButton {
                 Layout.fillWidth: true
-                iconText: "󰋽"  // save icon
+                iconText: "󰋽"
                 tooltipText: "Save profile"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
                 enabled: newProfileName.trim() !== "" && rawConfigInput.trim() !== "" && !busy
-                onClicked: {
-                  if (service) service.saveProfile(newProfileName.trim(), rawConfigInput)
-                }
+                onClicked: service.saveProfile(newProfileName.trim(), rawConfigInput)
               }
 
               PanelActionButton {
-                iconText: "󰌶"  // cancel/close icon
+                iconText: "󰌶"
                 tooltipText: "Cancel"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
@@ -339,32 +346,7 @@ Panel {
     }
   }
 
-  function moveCursor(dx, dy) {
-    cursorActive = true
-    if (dy !== 0) {
-      // Simple section navigation: header → profiles → config editor
-      if (focusSection === "header" && dy > 0 && showProfiles) focusSection = "profiles"
-      else if (focusSection === "profiles" && dy < 0) focusSection = "header"
-      else if (focusSection === "profiles" && dy > 0 && configEditMode) focusSection = "config"
-      else if (focusSection === "config" && dy < 0) focusSection = "profiles"
-
-      // Profile index navigation within profiles section
-      if (focusSection === "profiles") {
-        profileIndex = Math.max(0, Math.min(profiles.length - 1, profileIndex + dy))
-      }
-    }
-  }
-
-  function activateCursor() {
-    if (cursorActive) {
-      if (focusSection === "header") service.toggle()
-      else if (focusSection === "profiles" && profiles.length > 0) {
-        var selected = profiles[Math.max(0, Math.min(profileIndex, profiles.length - 1))]
-        if (service) service.loadProfile(selected)
-      }
-    }
-  }
-
+  // ---- ProfileRow component
   component ProfileRow: CursorSurface {
     id: profileRow
     property string profileName: ""
@@ -389,7 +371,7 @@ Panel {
       spacing: Style.space(8)
 
       Text {
-        text: isActive ? "󰄳" : "󰌾"  // checkmark or VPN icon
+        text: isActive ? "󰄳" : "󰌾"
         color: isActive ? root.foreground : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -411,7 +393,7 @@ Panel {
       }
 
       PanelActionButton {
-        iconText: "󰆏"  // delete icon
+        iconText: "󰆏"
         foreground: root.dim
         fontFamily: root.fontFamily
         enabled: !isActive && !service.busy
@@ -426,11 +408,5 @@ Panel {
       onEntered: root.setProfileCursor(rowIndex)
       onClicked: if (profileName !== "") service.loadProfile(profileName)
     }
-  }
-
-  function setProfileCursor(index) {
-    cursorActive = true
-    focusSection = "profiles"
-    profileIndex = index
   }
 }
