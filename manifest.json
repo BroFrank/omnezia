@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "bro.amneziawg",
+  "name": "AmneziaWG VPN",
+  "version": "0.1.0",
+  "author": "bro",
+  "license": "MIT",
+  "description": "AmneziaWG VPN client with profile management, connection toggle, and quick status in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "AmneziaWG",
+    "description": "Connect to AmneziaWG VPN servers, manage profiles, and toggle connection status.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 10
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 3600,
+        "step": 5,
+        "defaultValue": 10
+      },
+      {
+        "key": "interfaceName",
+        "type": "string",
+        "label": "Interface name",
+        "defaultValue": "wg0"
+      }
+    ]
+  }
+}
