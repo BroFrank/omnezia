@@ -23,6 +23,7 @@ Item {
   property string activeProfileName: ""
   property bool profilesLoaded: false
   property string profileLoadError: ""
+  property bool refreshing: false
 
   // Config editing (for the panel)
   property string rawConfigText: ""

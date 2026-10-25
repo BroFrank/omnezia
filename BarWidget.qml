@@ -58,6 +58,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
+    text: "󰲵"  // VPN/globe icon from Nerd Fonts
     tooltipText: "AmneziaWG VPN"
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggle()

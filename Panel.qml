@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import Quickshell
 import qs.Commons
 import qs.Commons as Commons
@@ -166,6 +167,7 @@ Panel {
 
               trailingControl: Component {
                 ToggleSwitch {
+                  id: powerSwitch
                   visible: profiles.length > 0 || currentProfile !== null
                   checked: connected
                   busy: busy
@@ -196,7 +198,7 @@ Panel {
 
           // Not installed message
           CursorSurface {
-            visible: !service.whichProcess.running
+            visible: service && service.whichProcess && !service.whichProcess.running
             width: parent.width
             implicitHeight: missingText.implicitHeight + Style.spacing.rowPaddingX
             foreground: root.foreground
