@@ -12,7 +12,7 @@ Item {
 
   // Connection state
   property bool connected: false
-  property bool busy: whichProcess.running || statusProcess.running || connectProcess.running || disconnectProcess.running || profileLoadProcess.running || profileSaveProcess.running
+  property bool busy: whichProcess.running || statusProcess.running || connectProcess.running || disconnectProcess.running || profileLoadProcess.running || profileSaveProcess.running || installProcess.running || versionProcess.running
   property string statusText: "Checking…"  // i18n: ignore
   property string lastError: ""
   property string actionStatus: ""
@@ -24,6 +24,14 @@ Item {
   property bool profilesLoaded: false
   property string profileLoadError: ""
   property bool refreshing: false
+
+  // AmneziaWG installation & version
+  property bool amneziaInstalled: true
+  property string amneziaWGVersion: ""
+  property bool installing: false
+  property real installProgress: 0
+  property string installOutput: ""
+  property string installError: ""
 
   // Config editing (for the panel)
   property string rawConfigText: ""
@@ -49,6 +57,9 @@ Item {
   property string _profileListOutput: ""
   property string _profileLoadOutput: ""
   property string _profileLoadError: ""
+  property string _installOutput: ""
+  property string _installError: ""
+  property string _versionOutput: ""
 
   // Optimistic toggle state
   property int _desired: -1
@@ -84,6 +95,42 @@ Item {
       statusProcess.command = ["bash", "-c", "ip link show " + root.interfaceName + " 2>&1"]
       statusProcess.running = true
     }
+  }
+
+  // Check amneziawg-go version
+  function checkVersion() {
+    if (!versionProcess.running) {
+      _versionOutput = ""
+      versionProcess.command = ["bash", "-c", "amneziawg-go --version 2>&1"]
+      versionProcess.running = true
+    }
+  }
+
+  // Install amneziawg-go via omarchy pkg add
+  function installAmneziaWG() {
+    if (installing || installProcess.running) return
+    installing = true
+    installProgress = 0
+    installOutput = ""
+    installError = ""
+    _installOutput = ""
+    _installError = ""
+    statusText = "Installing amneziawg-go…"
+
+    // Simulate progress while process runs
+    installTimer.start()
+    installProcess.command = ["bash", "-c", "omarchy pkg add amneziawg-go 2>&1"]
+    installProcess.running = true
+  }
+
+  // Add profile from Amnezia vpn:// key
+  function addProfileFromVpnKey(vpnKey, name) {
+    if (!vpnKey || !name) return
+    _profileLoadOutput = ""
+    _profileLoadError = ""
+    activeProfileName = name
+    profileLoadProcess.command = ["bash", "-c", "printf '%s' '" + Util.shellQuote(vpnKey).replace(/'/g, "'\\''") + "' | python3 -c \"\nimport sys, base64, zlib, json\ntry:\n  data = sys.stdin.read().strip().replace('vpn://', '')\n  decoded = base64.urlsafe_b64decode(data + '=' * (4 - len(data) % 4))\n  decompressed = zlib.decompress(decoded[4:])\n  config = json.loads(decompressed.decode())\n  print(json.dumps(config))\nexcept Exception as e:\n  print('ERROR: ' + str(e), file=sys.stderr)\n\" 2>&1"]
+    profileLoadProcess.running = true
   }
 
   // Connect to VPN using current profile config
@@ -192,7 +239,7 @@ Item {
     profilesLoaded = true
   }
 
-  // Parse loaded profile JSON
+  // Parse loaded profile JSON (from vpn:// key or saved file)
   function parseProfileLoad(stdout, stderr) {
     var text = String(stdout || "")
     if (stderr && String(stderr).trim() !== "") {
@@ -202,21 +249,34 @@ Item {
     }
 
     try {
+      // Check if this is a vpn:// decoded result (has "containers" field)
       var parsed = JSON.parse(text)
-      // Validate structure
-      if (!parsed.name || !parsed.interface || !parsed.peer) {
-        configParseError = "Invalid profile: missing name, interface, or peer section"
-        currentProfile = null
-        return
-      }
-
-      currentProfile = Model.parseConfig(serializeToWgFormat(parsed))
-      if (currentProfile.ok) {
-        parsedConfigPreview = "OK — Interface + Peer validated"
-        configValid = true
-        profileLoadError = ""
+      if (parsed.containers && parsed.dns1 && parsed.dns2) {
+        // Decoded from vpn:// key — convert to profile format
+        currentProfile = Model.vpnKeyToProfile(parsed, activeProfileName)
+        if (currentProfile.ok) {
+          parsedConfigPreview = "OK — VPN key decoded and validated"
+          configValid = true
+          profileLoadError = ""
+        } else {
+          configParseError = currentProfile.error || "Config parse error"
+          currentProfile = null
+          configValid = false
+        }
+      } else if (parsed.name && parsed.interface && parsed.peer) {
+        // Standard JSON profile from disk
+        currentProfile = Model.parseConfig(serializeToWgFormat(parsed))
+        if (currentProfile.ok) {
+          parsedConfigPreview = "OK — Interface + Peer validated"
+          configValid = true
+          profileLoadError = ""
+        } else {
+          configParseError = currentProfile.error || "Config parse error"
+          currentProfile = null
+          configValid = false
+        }
       } else {
-        parsedConfigError = currentProfile.error || "Config parse error"
+        profileLoadError = "Invalid profile format: missing name, interface, or peer section"
         currentProfile = null
         configValid = false
       }
@@ -347,6 +407,19 @@ Item {
     onTriggered: root.actionStatus = ""
   }
 
+  // Progress simulation timer for install process
+  Timer {
+    id: installTimer
+    interval: 500
+    repeat: true
+    running: false
+    onTriggered: {
+      if (installProgress < 0.9) {
+        installProgress = Math.min(0.9, installProgress + 0.1)
+      }
+    }
+  }
+
   // Process: check amneziawg-go availability
   Process {
     id: whichProcess
@@ -356,9 +429,11 @@ Item {
       root.refreshing = false
       if (exitCode !== 0) {
         statusText = "amneziawg-go not installed"
+        amneziaInstalled = false
         lastError = "Install amneziawg-go from AUR or build from https://github.com/amnezia-vpn/amneziawg-go"
       } else {
-        root.refreshStatus()
+        amneziaInstalled = true
+        root.checkVersion()
       }
     }
   }
@@ -375,6 +450,24 @@ Item {
       var stdout = String(statusStdout.text || root._statusOutput || "")
       var stderr = String(statusStderr.text || root._statusError || "")
       root.parseStatus(stdout, stderr)
+    }
+  }
+
+  // Process: check amneziawg-go version
+  Process {
+    id: versionProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: versionStdout; waitForEnd: true; onStreamFinished: root._versionOutput = text }
+    stderr: StdioCollector { id: versionStderr; waitForEnd: true; onStreamFinished: root._versionOutput = text }
+    onExited: function(exitCode) {
+      if (exitCode === 0 && _versionOutput.trim() !== "") {
+        // Extract version from output like "amneziawg-go v0.5.x" or similar
+        var match = String(_versionOutput).match(/(?:v|version)[\s]*([^\s]+)/i)
+        amneziaWGVersion = match ? match[1] : _versionOutput.trim()
+      } else {
+        amneziaWGVersion = "Unknown version"
+      }
     }
   }
 
@@ -436,6 +529,34 @@ Item {
         } else {
           root.refreshStatus()
         }
+      }
+    }
+  }
+
+  // Process: install amneziawg-go
+  Process {
+    id: installProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: installStdout; waitForEnd: true; onStreamFinished: root._installOutput = text }
+    stderr: StdioCollector { id: installStderr; waitForEnd: true; onStreamFinished: root._installError = text }
+    onExited: function(exitCode) {
+      installing = false
+      installTimer.stop()
+      installProgress = 1.0
+
+      if (exitCode === 0) {
+        statusText = "amneziawg-go installed"
+        amneziaInstalled = true
+        actionStatus = "amneziawg-go installed successfully"
+        actionStatusTimer.restart()
+        root.checkVersion()
+      } else {
+        statusText = "Installation failed"
+        amneziaInstalled = false
+        lastError = elideStatus(_installError || _installOutput || "Install failed")
+        actionStatus = lastError
+        actionStatusTimer.restart()
       }
     }
   }

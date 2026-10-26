@@ -3,7 +3,6 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
-import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
 
@@ -26,6 +25,7 @@ Panel {
   property bool configEditMode: false
   property string newProfileName: ""
   property string rawConfigInput: ""
+  property string vpnKeyInput: ""
 
   // Service — inline component for this panel
   Service {
@@ -49,6 +49,7 @@ Panel {
     configEditMode = false
     rawConfigInput = ""
     newProfileName = ""
+    vpnKeyInput = ""
     if (service) {
       service.loadProfiles()
       service.refreshStatus()
@@ -77,11 +78,11 @@ Panel {
     cursorActive = true
     if (dy !== 0) {
       var showProfiles = profiles.length > 0 || service.profilesLoaded
-      var showConfigEditor = configEditMode || !currentProfile
+      var showKeyForm = configEditMode || !currentProfile
       if (focusSection === "header" && dy > 0 && showProfiles) focusSection = "profiles"
       else if (focusSection === "profiles" && dy < 0) focusSection = "header"
-      else if (focusSection === "profiles" && dy > 0 && showConfigEditor) focusSection = "config"
-      else if (focusSection === "config" && dy < 0) focusSection = "profiles"
+      else if (focusSection === "profiles" && dy > 0 && showKeyForm) focusSection = "keyform"
+      else if (focusSection === "keyform" && dy < 0) focusSection = "profiles"
 
       if (focusSection === "profiles") {
         profileIndex = Math.max(0, Math.min(profiles.length - 1, profileIndex + dy))
@@ -140,44 +141,339 @@ Panel {
           width: panelFlick.width
           spacing: Style.space(12)
 
-          // Header section with connection status and toggle
+          // ===== SECTION 1: Header =====
           Item {
             width: parent.width
-            implicitHeight: hero.implicitHeight
+            implicitHeight: headerSection.implicitHeight
 
-            PanelHero {
-              id: hero
-              width: parent.width
-              title: "AmneziaWG VPN"
-              meta: connected ? "Connected" : (profiles.length > 0 ? "Disconnected — select a profile" : "No profiles configured")
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              iconOpacity: connected ? 1.0 : 0.5
+            Column {
+              id: headerSection
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              spacing: Style.space(6)
 
-              iconComponent: Component {
-                Item {
-                  AmneziaIcon {
-                    x: (parent.width - width) / 2
-                    y: (parent.height - height) / 2
-                    iconSize: Style.font.display
-                    color: connected ? root.foreground : root.dim
-                  }
+              // Icon + Title row
+              Row {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                spacing: Style.space(10)
+
+                Image {
+                  source: Qt.resolvedUrl("icon.svg")
+                  width: Style.font.display * 1.2
+                  height: width
+                  fillMode: Image.PreserveAspectFit
+                  smooth: true
                 }
+
+                Text {
+                  text: "OMNEZIA"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.display
+                  font.bold: true
+                  elide: Text.ElideRight
+                  width: parent.width - icon.width - Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Spacer { Layout.fillWidth: true }
               }
 
-              trailingControl: Component {
+              // Meta + Toggle row
+              Row {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                spacing: Style.space(8)
+
+                Text {
+                  text: profiles.length > 0 ? (connected ? "Connected — " + profiles.length + " profile(s)" : "Disconnected — " + profiles.length + " profile(s)") : "No profiles"
+                  color: connected ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                Spacer { Layout.fillWidth: true }
+
                 ToggleSwitch {
                   id: powerSwitch
-                  visible: profiles.length > 0 || currentProfile !== null
                   checked: connected
                   busy: busy
-                  foreground: hero.foreground
+                  foreground: root.foreground
                   onToggled: service.toggle()
 
                   PanelToolTip {
                     visible: powerSwitch.containsMouse
-                    text: connected ? "Disconnect" : (currentProfile ? "Connect" : "Select a profile first")
-                    fontFamily: hero.fontFamily
+                    text: connected ? "Disconnect" : (profiles.length > 0 ? "Connect" : "Add a profile first")
+                    fontFamily: root.fontFamily
+                  }
+                }
+              }
+            }
+          }
+
+          // ===== SECTION 2: amnezia-wg status =====
+          Item {
+            width: parent.width
+            implicitHeight: wgStatusSection.implicitHeight
+
+            Column {
+              id: wgStatusSection
+              anchors.left: parent.left
+              anchors.right: parent.right
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                text: "AmneziaWG"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              // Not installed state
+              CursorSurface {
+                visible: service && service.whichProcess && !service.whichProcess.running && service.statusText === "amneziawg-go not installed"
+                width: parent.width
+                implicitHeight: missingBlock.implicitHeight + Style.spacing.xl
+                foreground: root.foreground
+
+                Column {
+                  id: missingBlock
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  spacing: Style.space(8)
+
+                  Text {
+                    text: "amneziawg-go is not installed"
+                    color: root.urgent
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                  }
+
+                  Text {
+                    text: "Install it to enable VPN connections.\nUse: omarchy pkg add amneziawg-go"
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    wrapMode: Text.WordWrap
+                  }
+
+                  PanelActionButton {
+                    iconText: "󰏔"
+                    tooltipText: "Install amneziawg-go"
+                    foreground: root.foreground
+                    fontFamily: root.fontFamily
+                    onClicked: service.installAmneziaWG()
+                  }
+                }
+              }
+
+              // Installing state with progress bar
+              CursorSurface {
+                visible: service && service.installProcess && service.installProcess.running
+                width: parent.width
+                implicitHeight: installingBlock.implicitHeight + Style.spacing.xl
+                foreground: root.foreground
+
+                Column {
+                  id: installingBlock
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  spacing: Style.space(8)
+
+                  Text {
+                    text: "Installing amneziawg-go…"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                  }
+
+                  ProgressBar {
+                    width: parent.width
+                    value: service.installProgress || 0
+                    foreground: root.foreground
+                  }
+
+                  Text {
+                    text: service.installOutput || ""
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                  }
+                }
+              }
+
+              // Installed state — show version
+              CursorSurface {
+                visible: service && service.whichProcess && !service.whichProcess.running && service.statusText !== "amneziawg-go not installed"
+                width: parent.width
+                implicitHeight: installedBlock.implicitHeight + Style.spacing.xl
+                foreground: root.foreground
+
+                Column {
+                  id: installedBlock
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  spacing: Style.space(4)
+
+                  Text {
+                    text: "amneziawg-go installed"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                  }
+
+                  Text {
+                    text: service.amneziaWGVersion || "Checking version…"
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                }
+              }
+            }
+          }
+
+          // ===== SECTION 3: Profiles list =====
+          Item {
+            width: parent.width
+            implicitHeight: profilesSection.implicitHeight
+
+            Column {
+              id: profilesSection
+              anchors.left: parent.left
+              anchors.right: parent.right
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                text: "Profiles (" + profiles.length + ")"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              // No profiles message
+              Text {
+                visible: !profilesLoaded || profiles.length === 0
+                width: parent.width
+                text: "No VPN profiles configured yet.\nAdd one using the key form below."
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.WordWrap
+              }
+
+              // Profile list
+              ListView {
+                visible: profiles.length > 0
+                id: profileList
+                width: parent.width
+                height: Math.min(contentHeight, Style.space(240))
+                clip: true
+                spacing: Style.space(6)
+                model: profiles
+                reuseItems: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                delegate: ProfileRow {
+                  required property var modelData
+                  required property int index
+                  width: profileList.width
+                  profileName: modelData
+                  isActive: currentProfile && currentProfile.name === modelData
+                  rowIndex: index
+                }
+              }
+            }
+          }
+
+          // ===== SECTION 4: Key input form =====
+          Item {
+            width: parent.width
+            implicitHeight: keyFormSection.implicitHeight
+
+            Column {
+              id: keyFormSection
+              anchors.left: parent.left
+              anchors.right: parent.right
+              spacing: Style.space(8)
+
+              PanelSectionHeader {
+                text: "Add Profile"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              TextField {
+                width: parent.width
+                id: profileNameField
+                foreground: root.foreground
+                placeholderText: "Profile name (e.g., Germany, USA)"
+                text: newProfileName
+                onTextChanged: newProfileName = text
+                Keys.onPressed: function(event) {
+                  if (event.key === Qt.Key_Escape) {
+                    configEditMode = false
+                    keyCatcher.forceActiveFocus()
+                    event.accepted = true
+                  }
+                }
+              }
+
+              TextField {
+                width: parent.width
+                id: vpnKeyField
+                foreground: root.foreground
+                placeholderText: "Paste Amnezia vpn:// key here"
+                text: vpnKeyInput
+                onTextChanged: vpnKeyInput = text
+                Keys.onPressed: function(event) {
+                  if (event.key === Qt.Key_Escape) {
+                    configEditMode = false
+                    keyCatcher.forceActiveFocus()
+                    event.accepted = true
+                  }
+                }
+              }
+
+              RowLayout {
+                width: parent.width
+                spacing: Style.space(8)
+
+                PanelActionButton {
+                  Layout.fillWidth: true
+                  iconText: "󰅌"
+                  tooltipText: "Paste from clipboard"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: {
+                    var clip = Quickshell.clipboard()
+                    if (clip) vpnKeyInput = clip.text || ""
+                  }
+                }
+
+                PanelActionButton {
+                  iconText: "󰏔"
+                  tooltipText: "Add profile from key"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: newProfileName.trim() !== "" && vpnKeyInput.trim() !== "" && !busy
+                  onClicked: service.addProfileFromVpnKey(vpnKeyInput.trim(), newProfileName.trim())
+                }
+
+                PanelActionButton {
+                  iconText: "󰌶"
+                  tooltipText: "Cancel"
+                  foreground: root.dim
+                  fontFamily: root.fontFamily
+                  onClicked: {
+                    configEditMode = false
+                    vpnKeyInput = ""
+                    newProfileName = ""
                   }
                 }
               }
@@ -194,154 +490,6 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
-          }
-
-          // Not installed message
-          CursorSurface {
-            visible: service && service.whichProcess && !service.whichProcess.running
-            width: parent.width
-            implicitHeight: missingText.implicitHeight + Style.spacing.rowPaddingX
-            foreground: root.foreground
-
-            Text {
-              id: missingText
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.margins: Style.space(12)
-              text: "amneziawg-go not installed. Install with:\n  omarchy pkg add amneziawg-go"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              wrapMode: Text.WordWrap
-            }
-          }
-
-          // Profile list section
-          PanelSeparator {
-            visible: profiles.length > 0 && !configEditMode
-            foreground: root.foreground
-          }
-
-          Column {
-            visible: profiles.length > 0 && !configEditMode
-            width: parent.width
-            spacing: Style.space(10)
-
-            PanelSectionHeader {
-              text: "VPN Profiles (" + profiles.length + ")"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            ListView {
-              id: profileList
-              visible: profiles.length > 0
-              width: parent.width
-              height: Math.min(contentHeight, Style.space(240))
-              clip: true
-              spacing: Style.space(6)
-              model: profiles
-              reuseItems: true
-              boundsBehavior: Flickable.StopAtBounds
-
-              delegate: ProfileRow {
-                required property var modelData
-                required property int index
-                width: profileList.width
-                profileName: modelData
-                isActive: currentProfile && currentProfile.name === modelData
-                rowIndex: index
-              }
-            }
-
-            PanelActionButton {
-              visible: true
-              iconText: "󰅕"
-              tooltipText: "Add new profile"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              onClicked: {
-                configEditMode = true
-                rawConfigInput = ""
-                newProfileName = ""
-              }
-            }
-          }
-
-          // Config editor section
-          PanelSeparator {
-            visible: configEditMode
-            foreground: root.foreground
-          }
-
-          Column {
-            id: configEditor
-            visible: configEditMode
-            width: parent.width
-            spacing: Style.space(10)
-
-            PanelSectionHeader {
-              text: "New Profile"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            TextField {
-              width: parent.width
-              foreground: root.foreground
-              placeholderText: "Profile name (e.g., Germany, USA)"
-              text: newProfileName
-              onTextChanged: newProfileName = text
-              Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
-                  configEditMode = false
-                  keyCatcher.forceActiveFocus()
-                  event.accepted = true
-                }
-              }
-            }
-
-            TextEdit {
-              width: parent.width
-              height: Style.space(200)
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              text: rawConfigInput
-              wrapMode: TextEdit.Wrap
-
-              Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape && !rawConfigInput) {
-                  configEditMode = false
-                  keyCatcher.forceActiveFocus()
-                  event.accepted = true
-                }
-              }
-            }
-
-            RowLayout {
-              width: parent.width
-              spacing: Style.space(8)
-
-              PanelActionButton {
-                Layout.fillWidth: true
-                iconText: "󰋽"
-                tooltipText: "Save profile"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                enabled: newProfileName.trim() !== "" && rawConfigInput.trim() !== "" && !busy
-                onClicked: service.saveProfile(newProfileName.trim(), rawConfigInput)
-              }
-
-              PanelActionButton {
-                iconText: "󰌶"
-                tooltipText: "Cancel"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                onClicked: configEditMode = false
-              }
-            }
           }
         }
       }
@@ -390,16 +538,38 @@ Panel {
         font.pixelSize: Style.font.body
         font.bold: isActive
         elide: Text.ElideRight
-        width: parent.width - Style.space(22) - Style.space(8)
+        width: parent.width - Style.space(22) - Style.space(8) * 2 - deleteBtn.implicitWidth - selectBtn.implicitWidth
         anchors.verticalCenter: parent.verticalCenter
       }
 
       PanelActionButton {
+        id: selectBtn
         iconText: "󰆏"
         foreground: root.dim
         fontFamily: root.fontFamily
         enabled: !isActive && !service.busy
+        onClicked: service.loadProfile(profileName)
+
+        PanelToolTip {
+          visible: containsMouse
+          text: "Select this profile"
+          fontFamily: root.fontFamily
+        }
+      }
+
+      PanelActionButton {
+        id: deleteBtn
+        iconText: "󰆴"
+        foreground: isActive ? root.dim : root.urgent
+        fontFamily: root.fontFamily
+        enabled: !service.busy
         onClicked: service.deleteProfile(profileName)
+
+        PanelToolTip {
+          visible: containsMouse
+          text: "Delete profile '" + profileName + "'"
+          fontFamily: root.fontFamily
+        }
       }
     }
 

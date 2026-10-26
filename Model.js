@@ -197,3 +197,94 @@ function isValidPublicKey(key) {
   // Base64-encoded, 44 chars for WireGuard public keys
   return key && key.length === 44 && /^[A-Za-z0-9+\/=]+$/.test(key)
 }
+
+/**
+ * Convert a decoded Amnezia vpn:// JSON into our profile format.
+ *
+ * The decoded vpn:// structure:
+ *   { containers: [...], dns1: "...", dns2: "..." }
+ * Each container has protocol configs like:
+ *   { awg: { last_config: "{ config: WG_template, mtu: ..., port: ... }" } }
+ */
+function vpnKeyToProfile(decodedJson, profileName) {
+  var result = { ok: false, name: profileName || "", interface: {}, peer: {}, error: "" }
+
+  if (!decodedJson || !decodedJson.containers || decodedJson.containers.length === 0) {
+    result.error = "No containers in vpn:// config"
+    return result
+  }
+
+  // Use the last container (most recent config)
+  var lastContainer = decodedJson.containers[decodedJson.containers.length - 1]
+  if (!lastContainer.awg || !lastContainer.awg.last_config) {
+    result.error = "No AmneziaWG config in containers"
+    return result
+  }
+
+  try {
+    var lastConfig = JSON.parse(lastContainer.awg.last_config)
+    var wgTemplate = String(lastConfig.config || "")
+
+    // Replace DNS placeholders with actual values from decoded json
+    if (decodedJson.dns1) wgTemplate = wgTemplate.replace("$PRIMARY_DNS", decodedJson.dns1)
+    if (decodedJson.dns2) wgTemplate = wgTemplate.replace("$SECONDARY_DNS", decodedJson.dns2)
+
+    // Parse the WireGuard config template
+    var parsed = parseConfig(wgTemplate)
+    if (!parsed.ok) {
+      result.error = parsed.error || "Failed to parse WireGuard config from vpn:// key"
+      return result
+    }
+
+    // Copy interface and peer data
+    result.interface = parsed.interface
+    result.peer = parsed.peer
+
+    // Add AmneziaWG-specific params from lastConfig if available
+    if (lastConfig.mtu) {
+      // MTU is not a standard WG param but we store it for reference
+      result.interface.MTU = lastConfig.mtu
+    }
+    if (lastConfig.port && parseInt(lastConfig.port, 10) > 0) {
+      result.interface.ListenPort = parseInt(lastConfig.port, 10)
+    }
+
+    // Extract AmneziaWG params from the template if present
+    var lines = wgTemplate.split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim()
+      var kvMatch = line.match(/^([^=]+?)\s*=\s*(.+)$/)
+      if (!kvMatch) continue
+
+      var key = kvMatch[1].trim()
+      var value = kvMatch[2].trim()
+
+      // AmneziaWG-specific params go into interface section
+      if (key === "S1" || key === "S2" || key === "S3" || key === "S4") {
+        result.interface[key] = parseValue(key, value)
+      } else if (key === "Jc" || key === "Jmin" || key === "Jmax") {
+        result.interface[key] = parseValue(key, value)
+      } else if (key.match(/^H[1-4]$/)) {
+        result.interface[key] = parseValue(key, value)
+      } else if (key.match(/^I[1-5]$/)) {
+        result.interface[key] = value
+      } else if (key === "HeaderProtectionKey") {
+        result.interface[key] = value
+      } else if (key === "ContentPaddingAddition") {
+        var n = parseInt(value, 10)
+        if (isFinite(n)) result.interface[key] = n
+      } else if (key === "RekeyAfterTime" || key === "RekeyTimeout" ||
+                 key === "RejectAfterTime" || key === "KeepaliveTimeout" ||
+                 key === "MaxHandshakeAttempts") {
+        var n2 = parseInt(value, 10)
+        if (isFinite(n2)) result.interface[key] = n2
+      }
+    }
+
+    result.ok = true
+    return result
+  } catch (e) {
+    result.error = "Failed to parse vpn:// config: " + String(e)
+    return result
+  }
+}
