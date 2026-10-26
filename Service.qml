@@ -124,12 +124,12 @@ Item {
   }
 
   // Add profile from Amnezia vpn:// key
-  function addProfileFromVpnKey(vpnKey, name) {
-    if (!vpnKey || !name) return
+  function addProfileFromVpnKey(vpnKey) {
+    if (!vpnKey) return
     _profileLoadOutput = ""
     _profileLoadError = ""
-    activeProfileName = name
-    profileLoadProcess.command = ["bash", "-c", "printf '%s' '" + Util.shellQuote(vpnKey).replace(/'/g, "'\\''") + "' | python3 -c \"\nimport sys, base64, zlib, json\ntry:\n  data = sys.stdin.read().strip().replace('vpn://', '')\n  decoded = base64.urlsafe_b64decode(data + '=' * (4 - len(data) % 4))\n  decompressed = zlib.decompress(decoded[4:])\n  config = json.loads(decompressed.decode())\n  print(json.dumps(config))\nexcept Exception as e:\n  print('ERROR: ' + str(e), file=sys.stderr)\n\" 2>&1"]
+    activeProfileName = "Amnezia Profile" // fallback — will be refined from decoded config
+    profileLoadProcess.command = ["bash", "-c", "printf '%s' '" + Util.shellQuote(vpnKey).replace(/'/g, "'\\''") + "' | python3 -c \"\nimport sys, base64, zlib, json\ntry:\n  data = sys.stdin.read().strip().replace('vpn://', '')\n  decoded = base64.urlsafe_b64decode(data + '=' * (4 - len(data) % 4))\n  decompressed = zlib.decompress(decoded[4:])\n  config = json.loads(decompressed.decode())\n  # Try to extract a name from container info\n  containers = config.get('containers', [])\n  if containers:\n    last = containers[-1]\n    name = last.get('name', last.get('location', last.get('city', '')))\n    if not name:\n      name = 'Amnezia Profile'\n  else:\n    name = 'Amnezia Profile'\n  config['extracted_name'] = name\n  print(json.dumps(config))\nexcept Exception as e:\n  print('ERROR: ' + str(e), file=sys.stderr)\n\" 2>&1"]
     profileLoadProcess.running = true
   }
 
@@ -252,8 +252,9 @@ Item {
       // Check if this is a vpn:// decoded result (has "containers" field)
       var parsed = JSON.parse(text)
       if (parsed.containers && parsed.dns1 && parsed.dns2) {
-        // Decoded from vpn:// key — convert to profile format
-        currentProfile = Model.vpnKeyToProfile(parsed, activeProfileName)
+        // Decoded from vpn:// key — extract name and convert to profile format
+        var extractedName = parsed.extracted_name || activeProfileName
+        currentProfile = Model.vpnKeyToProfile(parsed, extractedName)
         if (currentProfile.ok) {
           parsedConfigPreview = "OK — VPN key decoded and validated"
           configValid = true

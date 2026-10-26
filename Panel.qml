@@ -36,6 +36,7 @@ Panel {
 
   readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
+  readonly property color urgent: bar ? bar.urgent : Commons.Color.urgent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property bool connected: service.connected
@@ -153,13 +154,14 @@ Panel {
               anchors.top: parent.top
               spacing: Style.space(6)
 
-              // Icon + Title row
+              // Icon + Title + Toggle row (single row)
               Row {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 spacing: Style.space(10)
 
                 Image {
+                  id: icon
                   source: Qt.resolvedUrl("icon.svg")
                   width: Style.font.display * 1.2
                   height: width
@@ -174,27 +176,9 @@ Panel {
                   font.pixelSize: Style.font.display
                   font.bold: true
                   elide: Text.ElideRight
-                  width: parent.width - icon.width - Style.space(10)
+                  width: parent.width - icon.width - powerSwitch.implicitWidth - Style.space(10) * 2
                   anchors.verticalCenter: parent.verticalCenter
                 }
-
-                Spacer { Layout.fillWidth: true }
-              }
-
-              // Meta + Toggle row
-              Row {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                spacing: Style.space(8)
-
-                Text {
-                  text: profiles.length > 0 ? (connected ? "Connected — " + profiles.length + " profile(s)" : "Disconnected — " + profiles.length + " profile(s)") : "No profiles"
-                  color: connected ? root.foreground : root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                }
-
-                Spacer { Layout.fillWidth: true }
 
                 ToggleSwitch {
                   id: powerSwitch
@@ -232,7 +216,7 @@ Panel {
 
               // Not installed state
               CursorSurface {
-                visible: service && service.whichProcess && !service.whichProcess.running && service.statusText === "amneziawg-go not installed"
+                visible: !!service ? (!!service.whichProcess && !service.whichProcess.running && service.statusText === "amneziawg-go not installed") : false
                 width: parent.width
                 implicitHeight: missingBlock.implicitHeight + Style.spacing.xl
                 foreground: root.foreground
@@ -271,7 +255,7 @@ Panel {
 
               // Installing state with progress bar
               CursorSurface {
-                visible: service && service.installProcess && service.installProcess.running
+                visible: !!service ? (!!service.installProcess && service.installProcess.running) : false
                 width: parent.width
                 implicitHeight: installingBlock.implicitHeight + Style.spacing.xl
                 foreground: root.foreground
@@ -293,7 +277,6 @@ Panel {
                   ProgressBar {
                     width: parent.width
                     value: service.installProgress || 0
-                    foreground: root.foreground
                   }
 
                   Text {
@@ -309,7 +292,7 @@ Panel {
 
               // Installed state — show version
               CursorSurface {
-                visible: service && service.whichProcess && !service.whichProcess.running && service.statusText !== "amneziawg-go not installed"
+                visible: !!service ? (!!service.whichProcess && !service.whichProcess.running && service.statusText !== "amneziawg-go not installed") : false
                 width: parent.width
                 implicitHeight: installedBlock.implicitHeight + Style.spacing.xl
                 foreground: root.foreground
@@ -358,7 +341,7 @@ Panel {
 
               // No profiles message
               Text {
-                visible: !profilesLoaded || profiles.length === 0
+                visible: !service.profilesLoaded || profiles.length === 0
                 width: parent.width
                 text: "No VPN profiles configured yet.\nAdd one using the key form below."
                 color: root.dim
@@ -410,22 +393,6 @@ Panel {
 
               TextField {
                 width: parent.width
-                id: profileNameField
-                foreground: root.foreground
-                placeholderText: "Profile name (e.g., Germany, USA)"
-                text: newProfileName
-                onTextChanged: newProfileName = text
-                Keys.onPressed: function(event) {
-                  if (event.key === Qt.Key_Escape) {
-                    configEditMode = false
-                    keyCatcher.forceActiveFocus()
-                    event.accepted = true
-                  }
-                }
-              }
-
-              TextField {
-                width: parent.width
                 id: vpnKeyField
                 foreground: root.foreground
                 placeholderText: "Paste Amnezia vpn:// key here"
@@ -461,8 +428,8 @@ Panel {
                   tooltipText: "Add profile from key"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
-                  enabled: newProfileName.trim() !== "" && vpnKeyInput.trim() !== "" && !busy
-                  onClicked: service.addProfileFromVpnKey(vpnKeyInput.trim(), newProfileName.trim())
+                  enabled: vpnKeyInput.trim() !== "" && !busy
+                  onClicked: service.addProfileFromVpnKey(vpnKeyInput.trim())
                 }
 
                 PanelActionButton {
@@ -473,7 +440,6 @@ Panel {
                   onClicked: {
                     configEditMode = false
                     vpnKeyInput = ""
-                    newProfileName = ""
                   }
                 }
               }
@@ -506,8 +472,8 @@ Panel {
     hasCursor: root.cursorActive && root.focusSection === "profiles" && root.profileIndex === rowIndex
     current: isActive
     foreground: root.foreground
-    fill: root.hoverFill
-    currentFill: root.selectedFill
+    fill: Style.hoverFillFor(root.foreground, Commons.Color.accent)
+    currentFill: Style.selectedFillFor(root.foreground, Commons.Color.accent)
 
     implicitHeight: inner.implicitHeight + Style.spacing.xl
 

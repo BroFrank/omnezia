@@ -54,16 +54,31 @@ BarWidget {
     function toggle(): void { root.toggle() }
   }
 
-  WidgetButton {
+  Item {
     id: button
     anchors.fill: parent
-    bar: root.bar
-    text: "󰲵"  // VPN/globe icon from Nerd Fonts
-    tooltipText: "AmneziaWG VPN"
-    onPressed: function(b) {
-      if (b === Qt.RightButton) root.toggle()
-      else if (root.opened) root.close()
-      else root.open()
+
+    Image {
+      anchors.centerIn: parent
+      source: Qt.resolvedUrl("icon.svg")
+      width: Style.font.icon || 16
+      height: width
+      fillMode: Image.PreserveAspectFit
+      smooth: true
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: if (root.bar) root.bar.showTooltip(root, "AmneziaWG VPN")
+      onExited: if (root.bar) root.bar.hideTooltip(root)
+      onPressed: function(mouse) {
+        if (mouse.button === Qt.RightButton) root.toggle()
+        else if (root.opened) root.close()
+        else root.open()
+      }
     }
   }
 }
