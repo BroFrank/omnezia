@@ -6,8 +6,13 @@ A bar-widget plugin for [Omarchy](https://omarchy.org/) that provides AmneziaWG 
 
 - **Multiple profiles**: Store and switch between different VPN server configurations
 - **Quick toggle**: Right-click the bar icon to connect/disconnect instantly
-- **Panel UI**: Left-click for full profile management, connection details, and config editing
+- **Panel UI**: Left-click for full profile management with 4 sections:
+  - Header with SVG icon, plugin name, and connection toggle
+  - AmneziaWG status (install check, version display)
+  - Profile list with select/delete actions
+  - vpn:// key import form (auto-extracts server name from key)
 - **AmneziaWG protocol**: Full support for AmneziaWG-specific parameters (obfuscation, padding, header protection)
+- **vpn:// key import**: Paste Amnezia client-generated keys to auto-create profiles
 
 ## Installation
 
@@ -53,7 +58,7 @@ Profiles are stored as JSON files in `~/.config/omnezia/profiles/<name>.json`.
     "Address": ["10.244.0.2/32"],
     "PrivateKey": "your-private-key-here",
     "ListenPort": 0,
-    "S1": 80, "S2": 80, "S3": "(off)", "S4": 0,
+    "S1": 80, "S2": 80, "S3": null, "S4": 0,
     "Jc": 5, "Jmin": 40, "Jmax": 1400,
     "H1": "696-700", "H2": "696-700", "H3": "696-700", "H4": "(off)",
     "I1": "", "I2": "", "I3": "", "I4": "", "I5": "",

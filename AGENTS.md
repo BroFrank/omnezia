@@ -25,13 +25,16 @@ BarWidget.qml (manifest entry point: barWidget)
   ├─ Panel.qml (popup panel with profile management)
   │   ├─ Service.qml (backend logic via QML Process elements)
   │   │   ├─ which amneziawg-go       → installed check
+  │   │   ├─ amneziawg-go --version    → version display
+  │   │   ├─ omarchy pkg add amneziawg-go → install process
   │   │   ├─ ip link show wg0         → connection status
   │   │   ├─ ip link del wg0          → disconnect
   │   │   └─ amneziawg-go wg0 < conf → connect (writes config to /tmp)
-  │   ├─ Model.js (config parsing helpers)
-  │   ├─ AmneziaIcon.qml (VPN icon component)
-  │   └─ BarIconButton + KeyboardPanel (bar button + popup UI)
+  │   ├─ Model.js (config parsing helpers + vpnKeyToProfile())
+  │   └─ KeyboardPanel (popup UI with 4 sections: header, status, profiles, key form)
 ```
+
+BarWidget uses `Image { source: Qt.resolvedUrl("icon.svg") }` for the bar icon instead of Nerd Font text.
 
 Unlike Tailscale which calls `tailscale status --json`, AmneziaWG status is determined by:
 1. Checking if the interface exists (`ip link show wg0`) — type 65534 = WireGuard/AWG
@@ -72,12 +75,18 @@ null = "(off)" in WireGuard config text format.
 
 ## Development Workflow
 
-1. Edit files under `~/.config/omarchy/plugins/bro.amneziawg/` (filesystem directory name)
-2. Validate with `omarchy plugin validate "$PLUGIN_DIR"` (required)
-3. Check QML syntax with `qmllint -I "$OMARCHY_PATH/shell" -U ...` (optional — RC=255 is normal for complex panels)
-4. Test via `omarchy-shell shell summon/hide "io.github.BroFrank.omnezia"` or bar interaction
+1. Edit files in project root (`~/Projects/self/omnezia/`)
+2. Copy to installed plugin dirs:
+   ```bash
+   cp *.qml *.js icon.svg ~/.config/omarchy/plugins/io.github.BroFrank.omnezia/
+   cp *.qml *.js icon.svg ~/.config/omarchy/plugins/bro.amneziawg/
+   ```
+3. Validate with `omarchy plugin validate "$PLUGIN_DIR"` (required)
+4. Check QML syntax with `qmllint -I "$OMARCHY_PATH/shell" -U ...` (optional — RC=255 is normal for complex panels)
+5. Restart Quickshell after changes: `kill <pid>; sleep 2; quickshell -n -p /usr/share/omarchy/shell --verbose &`
+6. Test via `omarchy-shell shell summon/hide "io.github.BroFrank.omnezia"` or bar interaction
 
-> **Note**: filesystem directory uses `bro.amneziawg`, manifest ID uses `io.github.BroFrank.omnezia`. Both are intentional and serve different purposes — the former for plugin discovery on disk, the latter for bar layout configuration.
+> **Note**: filesystem directory uses `bro.amneziawg`, manifest ID uses `io.github.BroFrank.omnezia`. Both are intentional and serve different purposes — the former for plugin discovery on disk, the latter for bar layout configuration. Quickshell loads from `io.github.BroFrank.omnezia`.
 
 ## Git Workflow
 
@@ -89,6 +98,11 @@ null = "(off)" in WireGuard config text format.
 
 After each iteration, the user should verify:
 1. Panel opens/closes on left click (panel toggle) and right click (VPN toggle)
-2. Profile selection works correctly
-3. Connection status reflects actual amneziawg-go state
-4. Config file input and parsing work with real AmneziaWG configs
+2. Bar icon displays SVG image (not Nerd Font text)
+3. Header layout: icon + "OMNEZIA" name + ToggleSwitch in single row
+4. AmneziaWG status section shows correct state (installed/not installed/version)
+5. Profile list displays with select/delete buttons
+6. vpn:// key import form works (paste from clipboard, add profile)
+7. Profile selection and connection toggle work correctly
+8. Connection status reflects actual amneziawg-go state
+9. Config file input and parsing work with real AmneziaWG configs
