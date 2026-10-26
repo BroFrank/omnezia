@@ -55,12 +55,12 @@ Panel {
       service.loadProfiles()
       service.refreshStatus()
     }
-    root.controller.show()
+    opened = true
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
-    root.controller.hide()
+    opened = false
   }
 
   function toggle() {
@@ -113,7 +113,7 @@ Panel {
     anchorItem: root.anchorItem
     owner: root.barIdentity
     bar: root.bar
-    open: root.opened
+    open: opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(560))

@@ -57,15 +57,9 @@ BarWidget {
   Item {
     id: button
     anchors.fill: parent
-
-    Image {
-      anchors.centerIn: parent
-      source: Qt.resolvedUrl("icon.svg")
-      width: Style.font.icon || 16
-      height: width
-      fillMode: Image.PreserveAspectFit
-      smooth: true
-    }
+    readonly property int barSize: root.bar ? root.bar.barSize : Style.bar.sizeHorizontal
+    implicitWidth: barSize
+    implicitHeight: barSize
 
     MouseArea {
       anchors.fill: parent
@@ -79,6 +73,15 @@ BarWidget {
         else if (root.opened) root.close()
         else root.open()
       }
+    }
+
+    Image {
+      anchors.centerIn: parent
+      source: Qt.resolvedUrl("icon.svg")
+      width: Style.font.icon || 16
+      height: width
+      fillMode: Image.PreserveAspectFit
+      smooth: true
     }
   }
 }
