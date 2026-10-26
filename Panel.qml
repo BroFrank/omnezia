@@ -45,6 +45,8 @@ Panel {
   readonly property var currentProfile: service.currentProfile
 
   // ---- Panel lifecycle
+  property bool panelOpenState: false
+
   function open() {
     cursorActive = false
     configEditMode = false
@@ -55,12 +57,12 @@ Panel {
       service.loadProfiles()
       service.refreshStatus()
     }
-    opened = true
+    panelOpenState = true
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
-    opened = false
+    panelOpenState = false
   }
 
   function toggle() {
@@ -113,7 +115,7 @@ Panel {
     anchorItem: root.anchorItem
     owner: root.barIdentity
     bar: root.bar
-    open: opened
+    open: panelOpenState
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(560))
