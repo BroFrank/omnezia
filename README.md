@@ -37,7 +37,7 @@ The widget defaults to the right section. To add it manually:
 
 ```jsonc
 // ~/.config/omarchy/shell.json → bar.layout.right
-{ "id": "bro.amneziawg" }
+{ "id": "io.github.BroFrank.omnezia" }
 ```
 
 ## Profile Format
@@ -105,4 +105,4 @@ git clone https://github.com/amnezia-vpn/amneziawg-go && cd amneziawg-go && make
 
 ## License
 
-Private — all rights reserved.
+MIT
