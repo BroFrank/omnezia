@@ -13,7 +13,7 @@ Omnezia is a bar-widget plugin for the [Omarchy](https://omarchy.org/) Linux dis
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Bar UI + Panel | QML (Quickshell/Quattro) — single `Panel.qml` entry point | Bar widget icon, popup panel with profile management |
+| Bar UI + Panel | QML (Quickshell/Quattro) — `BarWidget.qml` (bar), `Panel.qml` (popup) | Bar widget icon, popup panel with profile management |
 | Backend | Shell commands via QML `Process` elements | `amneziawg-go`, `ip link del/show` |
 | Config parsing | JavaScript (`Model.js`) | Parse WireGuard-style configs ↔ JSON profiles |
 | Profile storage | JSON files in `~/.config/omnezia/profiles/` | User profile management |
@@ -21,15 +21,16 @@ Omnezia is a bar-widget plugin for the [Omarchy](https://omarchy.org/) Linux dis
 ## Architecture
 
 ```
-Panel.qml (manifest entry point: barWidget)
-  ├─ Service.qml (backend logic via QML Process elements)
-  │   ├─ which amneziawg-go       → installed check
-  │   ├─ ip link show wg0         → connection status
-  │   ├─ ip link del wg0          → disconnect
-  │   └─ amneziawg-go wg0 < conf → connect (writes config to /tmp)
-  ├─ Model.js (config parsing helpers)
-  ├─ AmneziaIcon.qml (VPN icon component)
-  └─ BarIconButton + KeyboardPanel (bar button + popup UI)
+BarWidget.qml (manifest entry point: barWidget)
+  ├─ Panel.qml (popup panel with profile management)
+  │   ├─ Service.qml (backend logic via QML Process elements)
+  │   │   ├─ which amneziawg-go       → installed check
+  │   │   ├─ ip link show wg0         → connection status
+  │   │   ├─ ip link del wg0          → disconnect
+  │   │   └─ amneziawg-go wg0 < conf → connect (writes config to /tmp)
+  │   ├─ Model.js (config parsing helpers)
+  │   ├─ AmneziaIcon.qml (VPN icon component)
+  │   └─ BarIconButton + KeyboardPanel (bar button + popup UI)
 ```
 
 Unlike Tailscale which calls `tailscale status --json`, AmneziaWG status is determined by:
@@ -71,27 +72,18 @@ null = "(off)" in WireGuard config text format.
 
 ## Development Workflow
 
-1. Edit files under `~/.config/omarchy/plugins/bro.amneziawg/`
+1. Edit files under `~/.config/omarchy/plugins/bro.amneziawg/` (filesystem directory name)
 2. Validate with `omarchy plugin validate "$PLUGIN_DIR"` (required)
 3. Check QML syntax with `qmllint -I "$OMARCHY_PATH/shell" -U ...` (optional — RC=255 is normal for complex panels)
-4. Test via `omarchy-shell shell summon/hide "bro.amneziawg"` or bar interaction
+4. Test via `omarchy-shell shell summon/hide "io.github.BroFrank.omnezia"` or bar interaction
 
-## Validation Checklist
-
-- [x] Manifest parses as valid JSON with required fields
-- [x] Kind and entry point agree (bar-widget → Panel.qml)
-- [x] Every referenced file exists on disk
-- [x] No forbidden ID (`bro.amneziawg` is OK, not `omarchy.*`)
-- [x] Git initialized with first commit (582eb8b)
-- [ ] Plugin folder has no symlinks
-- [ ] Manual testing: panel opens/closes, toggle works, profile management
+> **Note**: filesystem directory uses `bro.amneziawg`, manifest ID uses `io.github.BroFrank.omnezia`. Both are intentional and serve different purposes — the former for plugin discovery on disk, the latter for bar layout configuration.
 
 ## Git Workflow
 
 - Commit after each logical change
 - Use conventional commit messages: `feat:`, `fix:`, `refactor:`, `docs:`
-- Tag releases with version numbers matching manifest version
-- First commit (582eb8b): initial plugin with all core files
+- Tag releases with version numbers matching manifest version (`0.1.0`)
 
 ## Manual Testing Required
 
