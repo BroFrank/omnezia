@@ -12,7 +12,7 @@ Panel {
   id: root
   moduleName: "io.github.BroFrank.omnezia"
   ipcTarget: "io.github.BroFrank.omnezia"
-  manageIpc: false
+  manageIpc: true
 
   property var anchorItem: null
   property var hostWidget: null
@@ -58,11 +58,13 @@ Panel {
       service.refreshStatus()
     }
     panelOpenState = true
+    controller.show()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
     panelOpenState = false
+    controller.hide()
   }
 
   function toggle() {
