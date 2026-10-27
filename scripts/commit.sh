@@ -62,7 +62,7 @@ while IFS= read -r file; do
   case "$file" in
     *.qml|*.js|manifest.json|icon.svg) runtime=1 ;;
   esac
-done < <(git diff --cached --name-only --diff-filter=ACMR)
+done < <(git diff --cached --name-only --diff-filter=ACMRD)
 
 if (( runtime && ! verified && ! release )); then
   fail "runtime files are staged, but manual verification was not confirmed.
