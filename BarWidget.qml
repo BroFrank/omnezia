@@ -11,7 +11,7 @@ BarWidget {
   id: root
   moduleName: "io.github.BroFrank.omnezia"
 
-  readonly property bool opened: panelLoader.item ? panelLoader.item.panelOpenState === true : false
+  readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
 
   function open() { if (panelLoader.item) panelLoader.item.open() }

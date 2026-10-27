@@ -45,7 +45,8 @@ Panel {
   readonly property var currentProfile: service.currentProfile
 
   // ---- Panel lifecycle
-  property bool panelOpenState: false
+  // opened is inherited from Quickshell's Panel base class when manageIpc: true.
+  // It drives KeyboardPanel visibility and the bar's popout coordinator.
 
   function open() {
     cursorActive = false
@@ -57,14 +58,12 @@ Panel {
       service.loadProfiles()
       service.refreshStatus()
     }
-    panelOpenState = true
-    controller.show()
+    root.opened = true
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   function close() {
-    panelOpenState = false
-    controller.hide()
+    root.opened = false
   }
 
   function toggle() {
@@ -117,7 +116,7 @@ Panel {
     anchorItem: root.anchorItem
     owner: root.barIdentity
     bar: root.bar
-    open: panelOpenState
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(560))
