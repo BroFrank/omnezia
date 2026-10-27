@@ -1,0 +1,33 @@
+schema: spec-driven
+
+# Project context (optional)
+context: |
+  Omnezia is an Omarchy bar-widget plugin written in QML and JavaScript.
+  Runtime files: BarWidget.qml, Panel.qml, Service.qml, Model.js,
+  AmneziaIcon.qml, icon.svg, and manifest.json.
+  The plugin runs unsandboxed inside the Omarchy shell and connects to
+  AmneziaWG through amneziawg-go.
+  The repository is public. main is protected and all work lands through
+  pull requests.
+  Runtime changes require manual verification using docs/manual-test.md
+  before the commit is created.
+  Versioning is SemVer with manifest.json as the single source of truth.
+
+# Per-artifact rules (optional)
+rules:
+  proposal:
+    - Keep proposals under 500 words.
+    - State whether the change affects runtime behavior and manual testing.
+  tasks:
+    - Include the verification command or observable behavior for each task.
+    - Keep documentation in the group that creates the behavior.
+
+# Per-operation guidance (optional)
+operations:
+  apply:
+    guidance:
+      - Run scripts/check.sh after each task group.
+      - Do not commit until the user confirms docs/manual-test.md for runtime changes.
+  archive:
+    guidance:
+      - Archive before opening the pull request so the spec update is reviewed with the code.

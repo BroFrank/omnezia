@@ -16,27 +16,30 @@ A bar-widget plugin for [Omarchy](https://omarchy.org/) that provides AmneziaWG 
 
 ## Installation
 
-### 1. Clone into Omarchy plugins directory
+### From git (recommended)
 
 ```bash
-# Copy plugin files to your Omarchy config
-mkdir -p ~/.config/omarchy/plugins/bro.amneziawg
-cp -r ./* ~/.config/omarchy/plugins/bro.amneziawg/
-```
-
-### 2. Create profiles directory
-
-```bash
+omarchy plugin add https://github.com/BroFrank/omnezia.git --enable
 mkdir -p ~/.config/omnezia/profiles
 ```
 
-### 3. Discover the plugin
+Update later with:
 
 ```bash
-omarchy-shell shell rescanPlugins
+omarchy plugin update io.github.BroFrank.omnezia
 ```
 
-### 4. Add to bar layout (optional)
+### Manual install
+
+```bash
+git clone https://github.com/BroFrank/omnezia.git \
+  ~/.config/omarchy/plugins/io.github.BroFrank.omnezia
+mkdir -p ~/.config/omnezia/profiles
+omarchy-shell shell rescanPlugins
+omarchy plugin enable io.github.BroFrank.omnezia
+```
+
+### Add to bar layout (optional)
 
 The widget defaults to the right section. To add it manually:
 
@@ -107,6 +110,52 @@ omarchy pkg add amneziawg-go
 # or
 git clone https://github.com/amnezia-vpn/amneziawg-go && cd amneziawg-go && make install
 ```
+
+## Development
+
+Requirements: `omarchy`, `amneziawg-go`, `jq`, `node`, `gh`, and `openspec`.
+Install OpenSpec with the official installer or npm:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Fission-AI/OpenSpec/main/scripts/binary/install.sh | sh
+# or: npm install -g @fission-ai/openspec@latest
+```
+
+```bash
+git clone https://github.com/BroFrank/omnezia.git
+cd omnezia
+scripts/setup.sh          # activate hooks
+scripts/check.sh          # manifest, SemVer, changelog, JS syntax, OpenSpec
+scripts/dev-install.sh --restart
+```
+
+Workflow:
+
+1. Create a branch (`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`).
+2. Create an OpenSpec change for behavior changes (`/opsx-propose`).
+3. Implement and run `scripts/check.sh`.
+4. Deploy with `scripts/dev-install.sh` and complete
+   [`docs/manual-test.md`](docs/manual-test.md).
+5. Commit with `scripts/commit.sh --verified -m "feat: ..."`.
+6. Open a pull request with `scripts/mr.sh`; the maintainer merges.
+
+Direct commits and pushes to `main` are blocked by git hooks and a GitHub
+ruleset. Full rules are in [AGENTS.md](AGENTS.md).
+
+## Versioning and Releases
+
+Versions follow [Semantic Versioning](https://semver.org/) and come from
+`manifest.json`. `CHANGELOG.md` tracks every release, and tags use `vX.Y.Z`.
+
+```bash
+# Prepare a reviewed release PR
+scripts/release.sh minor
+
+# After the PR is merged
+scripts/release.sh --publish 0.2.0
+```
+
+Publishing creates the annotated tag, a plugin archive, and a GitHub release.
 
 ## License
 

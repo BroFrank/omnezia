@@ -1,0 +1,11 @@
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Never commit real VPN profiles or private keys.
+*.conf
+!*.example.conf
+profiles/
+*.key
+*.pem
