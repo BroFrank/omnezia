@@ -12,13 +12,16 @@ Item {
 
   // Connection state
   property bool connected: false
-  property bool busy: whichProcess.running || statusProcess.running || connectProcess.running || disconnectProcess.running || profileLoadProcess.running || profileSaveProcess.running || installProcess.running || versionProcess.running
+  property bool busy: whichProcess.running || statusProcess.running || connectProcess.running || disconnectProcess.running || profileLoadProcess.running || profileSaveProcess.running || profileWriteProcess.running || profileDeleteProcess.running || installProcess.running || versionProcess.running
   property string statusText: "Checking…"  // i18n: ignore
   property string lastError: ""
   property string actionStatus: ""
 
   // Profile management
   property var profiles: []
+  // Typed mirror of profiles.length: bindings that only need the count stay
+  // reactive without depending on a JS array.
+  readonly property int profileCount: profiles.length
   property var currentProfile: null
   property string activeProfileName: ""
   property bool profilesLoaded: false
@@ -27,6 +30,7 @@ Item {
 
   // AmneziaWG installation & version
   property bool amneziaInstalled: true
+  property bool installChecked: false
   property string amneziaWGVersion: ""
   property bool installing: false
   property real installProgress: 0
@@ -129,8 +133,32 @@ Item {
     _profileLoadOutput = ""
     _profileLoadError = ""
     activeProfileName = "Amnezia Profile" // fallback — will be refined from decoded config
-    profileLoadProcess.command = ["bash", "-c", "printf '%s' '" + Util.shellQuote(vpnKey).replace(/'/g, "'\\''") + "' | python3 -c \"\nimport sys, base64, zlib, json\ntry:\n  data = sys.stdin.read().strip().replace('vpn://', '')\n  decoded = base64.urlsafe_b64decode(data + '=' * (4 - len(data) % 4))\n  decompressed = zlib.decompress(decoded[4:])\n  config = json.loads(decompressed.decode())\n  # Try to extract a name from container info\n  containers = config.get('containers', [])\n  if containers:\n    last = containers[-1]\n    name = last.get('name', last.get('location', last.get('city', '')))\n    if not name:\n      name = 'Amnezia Profile'\n  else:\n    name = 'Amnezia Profile'\n  config['extracted_name'] = name\n  print(json.dumps(config))\nexcept Exception as e:\n  print('ERROR: ' + str(e), file=sys.stderr)\n\" 2>&1"]
+    profileLoadProcess.command = ["bash", "-c", "printf '%s' " + Util.shellQuote(vpnKey) + " | python3 -c \"\nimport sys, base64, zlib, json\ntry:\n  data = sys.stdin.read().strip().replace('vpn://', '')\n  decoded = base64.urlsafe_b64decode(data + '=' * (4 - len(data) % 4))\n  decompressed = zlib.decompress(decoded[4:])\n  config = json.loads(decompressed.decode())\n  # Try to extract a name from container info\n  containers = config.get('containers', [])\n  if containers:\n    last = containers[-1]\n    name = last.get('name', last.get('location', last.get('city', '')))\n    if not name:\n      name = 'Amnezia Profile'\n  else:\n    name = 'Amnezia Profile'\n  config['extracted_name'] = name\n  print(json.dumps(config))\nexcept Exception as e:\n  print('ERROR: ' + str(e), file=sys.stderr)\n\" 2>&1"]
     profileLoadProcess.running = true
+  }
+
+  // Make a profile name safe for use as a file name.
+  function sanitizeProfileName(value) {
+    var name = String(value || "").trim().replace(/[^A-Za-z0-9 ._-]/g, "").replace(/\s+/g, " ").trim()
+    return name === "" ? "Amnezia Profile" : name
+  }
+
+  // Persist a parsed profile as JSON in the profiles directory.
+  function saveProfileObject(profile) {
+    if (!profile || !profile.ok || profileWriteProcess.running) return
+    var name = sanitizeProfileName(profile.name || activeProfileName)
+    var payload = JSON.stringify({
+      name: name,
+      interface: profile.interface,
+      peer: profile.peer
+    })
+    profileWriteProcess.command = [
+      "bash", "-c",
+      "mkdir -p " + Util.shellQuote(root.profilesDir) +
+      " && printf '%s' " + Util.shellQuote(payload) +
+      " > " + Util.shellQuote(root.profilesDir + "/" + name + ".json")
+    ]
+    profileWriteProcess.running = true
   }
 
   // Connect to VPN using current profile config
@@ -148,8 +176,8 @@ Item {
       _connectError = ""
       connectProcess.command = [
         "bash", "-c",
-        "printf '%s' '" + Util.shellQuote(configText).replace(/'/g, "'\\''") + "' > " + configFile +
-        " && amneziawg-go " + root.interfaceName + " < " + configFile
+        "printf '%s' " + Util.shellQuote(configText) + " > " + Util.shellQuote(configFile) +
+        " && amneziawg-go " + root.interfaceName + " < " + Util.shellQuote(configFile)
       ]
       connectProcess.running = true
     })
@@ -172,18 +200,19 @@ Item {
     else connect()
   }
 
-  // Load all profiles from disk
-  function loadProfiles() {
-    if (!profileLoadProcess.running && !profilesLoaded) {
-      _profileListOutput = ""
-      profileLoadProcess.command = ["bash", "-c", "ls '" + root.profilesDir + "'/*.json 2>/dev/null"]
-      profileLoadProcess.running = true
-    }
+  // Load all profiles from disk. `force` re-reads the directory even when a
+  // previous scan already ran (panel reopened, profile deleted, …).
+  function loadProfiles(force) {
+    if (profileLoadProcess.running) return
+    if (profilesLoaded && !force) return
+    _profileListOutput = ""
+    profileLoadProcess.command = ["bash", "-c", "ls " + Util.shellQuote(root.profilesDir) + "/*.json 2>/dev/null"]
+    profileLoadProcess.running = true
   }
 
   // Load a specific profile by name
   function loadProfile(name) {
-    if (!profileLoadProcess.running || String(name || "") === "") return
+    if (profileLoadProcess.running || String(name || "") === "") return
     _profileLoadOutput = ""
     _profileLoadError = ""
     activeProfileName = name
@@ -193,19 +222,20 @@ Item {
 
   // Save a profile (from raw config text)
   function saveProfile(name, configText) {
-    if (!profileSaveProcess.running || String(name || "") === "" || String(configText || "") === "") return
+    if (profileSaveProcess.running || String(name || "") === "" || String(configText || "") === "") return
     profileSaveProcess.command = [
       "bash", "-c",
-      "mkdir -p '" + root.profilesDir + "' && printf '%s' '" + Util.shellQuote(configText).replace(/'/g, "'\\''") + "' > '" + root.profilesDir + "/" + name + ".json'"
+      "mkdir -p " + Util.shellQuote(root.profilesDir) + " && printf '%s' " + Util.shellQuote(configText) +
+      " > " + Util.shellQuote(root.profilesDir + "/" + name + ".json")
     ]
     profileSaveProcess.running = true
   }
 
   // Delete a profile by name
   function deleteProfile(name) {
-    if (String(name || "") === "") return
-    Quickshell.execDetached(["bash", "-c", "rm -f '" + root.profilesDir + "/" + name + ".json'"])
-    loadProfiles()
+    if (String(name || "") === "" || profileDeleteProcess.running) return
+    profileDeleteProcess.command = ["rm", "-f", root.profilesDir + "/" + name + ".json"]
+    profileDeleteProcess.running = true
   }
 
   // Parse status output to determine connection state
@@ -229,13 +259,17 @@ Item {
   // Parse profile list output
   function parseProfileList(stdout) {
     var files = String(stdout || "").trim().split("\n").filter(function(f) { return f.trim() !== "" })
-    profiles = []
+    // Build the list locally and assign once: pushing into `profiles` after
+    // assigning it mutates the array in place, which emits no change signal
+    // and leaves every binding on profiles/length stale.
+    var list = []
     for (var i = 0; i < files.length; i++) {
       var file = files[i].trim()
       // Extract profile name from path: /home/user/.config/omnezia/profiles/name.json → name
       var match = file.match(/\/([^\/]+)\.json$/)
-      if (match) profiles.push(match[1])
+      if (match) list.push(match[1])
     }
+    profiles = list
     profilesLoaded = true
   }
 
@@ -253,28 +287,40 @@ Item {
       var parsed = JSON.parse(text)
       if (parsed.containers && parsed.dns1 && parsed.dns2) {
         // Decoded from vpn:// key — extract name and convert to profile format
-        var extractedName = parsed.extracted_name || activeProfileName
+        var extractedName = sanitizeProfileName(parsed.extracted_name || activeProfileName)
         currentProfile = Model.vpnKeyToProfile(parsed, extractedName)
         if (currentProfile.ok) {
+          currentProfile.name = extractedName
+          activeProfileName = extractedName
           parsedConfigPreview = "OK — VPN key decoded and validated"
           configValid = true
           profileLoadError = ""
+          // Write it to disk so it shows up in the profile list and survives
+          // a shell restart.
+          saveProfileObject(currentProfile)
         } else {
           configParseError = currentProfile.error || "Config parse error"
           currentProfile = null
           configValid = false
         }
-      } else if (parsed.name && parsed.interface && parsed.peer) {
-        // Standard JSON profile from disk
-        currentProfile = Model.parseConfig(serializeToWgFormat(parsed))
-        if (currentProfile.ok) {
+      } else if (parsed.name !== undefined && parsed.interface && parsed.peer) {
+        // Standard JSON profile from disk — use it as-is so AmneziaWG params
+        // are not round-tripped through text and lost.
+        if (!parsed.interface.PrivateKey || !parsed.peer.PublicKey) {
+          profileLoadError = "Profile is missing PrivateKey or PublicKey"
+          currentProfile = null
+          configValid = false
+        } else {
+          currentProfile = {
+            ok: true,
+            name: parsed.name,
+            interface: parsed.interface,
+            peer: parsed.peer
+          }
+          activeProfileName = parsed.name
           parsedConfigPreview = "OK — Interface + Peer validated"
           configValid = true
           profileLoadError = ""
-        } else {
-          configParseError = currentProfile.error || "Config parse error"
-          currentProfile = null
-          configValid = false
         }
       } else {
         profileLoadError = "Invalid profile format: missing name, interface, or peer section"
@@ -428,6 +474,7 @@ Item {
     command: []
     onExited: function(exitCode) {
       root.refreshing = false
+      root.installChecked = true
       if (exitCode !== 0) {
         statusText = "amneziawg-go not installed"
         amneziaInstalled = false
@@ -612,8 +659,56 @@ Item {
         lastError = ""
         actionStatus = "Profile saved"
         actionStatusTimer.restart()
+        profilesLoaded = false
         loadProfiles()
       }
     }
+  }
+
+  // Process: delete a profile file
+  Process {
+    id: profileDeleteProcess
+    running: false
+    command: []
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        lastError = "Could not delete profile"
+        actionStatus = lastError
+        actionStatusTimer.restart()
+      } else {
+        actionStatus = "Profile deleted"
+        actionStatusTimer.restart()
+        profilesLoaded = false
+        loadProfiles()
+      }
+    }
+  }
+
+  // Process: write a parsed profile object as JSON
+  Process {
+    id: profileWriteProcess
+    running: false
+    command: []
+    stderr: StdioCollector { id: writeStderr; waitForEnd: true; onStreamFinished: root._profileLoadError = text }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        lastError = elideStatus(String(writeStderr.text || "Could not save profile"))
+        actionStatus = lastError
+        actionStatusTimer.restart()
+      } else {
+        lastError = ""
+        actionStatus = "Profile added: " + root.activeProfileName
+        actionStatusTimer.restart()
+        profilesLoaded = false
+        loadProfiles()
+      }
+    }
+  }
+
+  // Check the binary and the interface as soon as the service exists — without
+  // this the panel never learned whether amneziawg-go is installed.
+  Component.onCompleted: {
+    checkInstalled()
+    refreshStatus()
   }
 }

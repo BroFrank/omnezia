@@ -13,10 +13,25 @@ BarWidget {
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
+  readonly property bool connected: panelLoader.item ? panelLoader.item.connected === true : false
+  readonly property bool busy: panelLoader.item ? panelLoader.item.busy === true : false
 
-  function open() { if (panelLoader.item) panelLoader.item.open() }
-  function close() { if (panelLoader.item) panelLoader.item.close() }
-  function toggle() { if (panelLoader.item) panelLoader.item.toggle() }
+  function open() {
+    if (panelLoader.item) {
+      panelLoader.item.open()
+    } else {
+      // Panel not yet loaded — retry after component instantiation completes
+      Qt.callLater(function() { root.open() })
+    }
+  }
+  function close() {
+    if (panelLoader.item) {
+      panelLoader.item.close()
+    } else {
+      Qt.callLater(function() { root.close() })
+    }
+  }
+  function toggle() { if (panelLoader.item) panelLoader.item.toggleConnection() }
   function closeForPopoutSwitch() { if (panelLoader.item) panelLoader.item.closeForPopoutSwitch() }
 
   function injectPanel() {
@@ -45,34 +60,26 @@ BarWidget {
     }
   }
 
-  IpcHandler {
-    target: "io.github.BroFrank.omnezia"
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.toggle() }
-  }
+  // IPC (open/close/toggle from `omarchy-shell shell ...` and keybindings) is
+  // owned by the base Panel via ipcTarget. Bar-widget panels are summoned
+  // through the live bar instance, so a second IpcHandler here would only
+  // collide with the panel's handler for the same target.
 
-  Item {
+  WidgetButton {
     id: button
     anchors.fill: parent
-    readonly property int barSize: root.bar ? root.bar.barSize : Style.bar.sizeHorizontal
-    implicitWidth: barSize
-    implicitHeight: barSize
+    bar: root.bar
+    pressable: true
+    hasVisualContent: true
+    active: root.connected
+    tooltipText: root.busy
+      ? "AmneziaWG: working…"
+      : (root.connected ? "AmneziaWG: connected" : "AmneziaWG: disconnected")
 
-    MouseArea {
-      anchors.fill: parent
-      acceptedButtons: Qt.LeftButton | Qt.RightButton
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onEntered: if (root.bar) root.bar.showTooltip(root, "AmneziaWG VPN")
-      onExited: if (root.bar) root.bar.hideTooltip(root)
-      onPressed: function(mouse) {
-        if (mouse.button === Qt.RightButton) root.toggle()
-        else if (root.opened) root.close()
-        else root.open()
-      }
+    onPressed: function(b) {
+      if (b === Qt.RightButton) root.toggle()
+      else if (root.opened) root.close()
+      else root.open()
     }
 
     Image {
@@ -82,6 +89,8 @@ BarWidget {
       height: width
       fillMode: Image.PreserveAspectFit
       smooth: true
+      // Unplugged/tinted so the bar icon reads as inactive when disconnected.
+      opacity: root.connected ? 1 : 0.55
     }
   }
 }

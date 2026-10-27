@@ -9,8 +9,12 @@ function parseConfig(text) {
   var lines = String(text || "").split("\n")
   var result = { ok: false, name: "", interface: {}, peer: {}, error: "" }
 
-  var section = null // "Interface" or "Peer"
-  var currentSection = {}
+  // Sections accumulate into their own objects: a plain `currentSection` that
+  // resets on every header would leave the interface empty by the time [Peer]
+  // arrives, and validation below would always fail.
+  var iface = {}
+  var peer = {}
+  var section = null // "interface" or "peer"
 
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i].trim()
@@ -21,12 +25,10 @@ function parseConfig(text) {
     // Section headers
     if (line.match(/^\[Interface\]$/i)) {
       section = "interface"
-      currentSection = {}
       continue
     }
     if (line.match(/^\[Peer\]$/i)) {
       section = "peer"
-      currentSection = {}
       continue
     }
 
@@ -38,20 +40,17 @@ function parseConfig(text) {
     var value = kvMatch[2].trim()
 
     if (section === "interface") {
-      currentSection[key] = parseValue(key, value)
+      iface[key] = parseValue(key, value)
     } else if (section === "peer") {
-      currentSection[key] = parseValue(key, value)
+      peer[key] = parseValue(key, value)
     }
   }
 
   // Validate minimum required fields
-  if (!currentSection || !section) {
+  if (!section) {
     result.error = "No config sections found"
     return result
   }
-
-  var iface = section === "interface" ? currentSection : {}
-  var peer = section === "peer" ? currentSection : {}
 
   // Validate Interface has PrivateKey
   if (!iface.PrivateKey || iface.PrivateKey.length < 40) {

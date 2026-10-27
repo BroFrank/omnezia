@@ -2,7 +2,9 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
 
@@ -31,7 +33,7 @@ Panel {
   Service {
     id: service
     settings: root.settings
-    interfaceName: "wg0"
+    interfaceName: root.setting("interfaceName", "wg0")
   }
 
   readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
@@ -42,7 +44,26 @@ Panel {
   readonly property bool connected: service.connected
   readonly property bool busy: service.busy
   readonly property var profiles: service.profiles
+  readonly property int profileCount: service.profileCount
   readonly property var currentProfile: service.currentProfile
+
+  // ---- Clipboard
+  // Quickshell has no clipboard() helper; read the Wayland clipboard directly.
+  function pasteFromClipboard() {
+    if (!clipboardProcess.running) clipboardProcess.running = true
+  }
+
+  Process {
+    id: clipboardProcess
+    command: ["wl-paste", "--no-newline"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var pasted = String(text || "").trim()
+        if (pasted !== "") vpnKeyInput = pasted
+      }
+    }
+  }
 
   // ---- Panel lifecycle
   // opened is inherited from Quickshell's Panel base class when manageIpc: true.
@@ -55,20 +76,27 @@ Panel {
     newProfileName = ""
     vpnKeyInput = ""
     if (service) {
-      service.loadProfiles()
+      service.loadProfiles(true)
       service.refreshStatus()
     }
-    root.opened = true
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    // `controller` is the public alias of the base Panel's internal
+    // panelController; the id itself is not visible from this file.
+    controller.show()
   }
 
   function close() {
-    root.opened = false
+    controller.hide()
   }
 
-  function toggle() {
-    if (root.opened) root.close()
-    else service.toggle()
+  // Connection toggle (bar right-click). With nothing selected there is
+  // nothing to connect, so fall back to opening the panel instead of doing
+  // nothing at all.
+  function toggleConnection() {
+    if (!service.currentProfile) {
+      root.open()
+      return
+    }
+    service.toggle()
   }
 
   function switchPanel(direction) {
@@ -219,7 +247,7 @@ Panel {
 
               // Not installed state
               CursorSurface {
-                visible: !!service ? (!!service.whichProcess && !service.whichProcess.running && service.statusText === "amneziawg-go not installed") : false
+                visible: !!service && service.installChecked && !service.amneziaInstalled && !service.installing
                 width: parent.width
                 implicitHeight: missingBlock.implicitHeight + Style.spacing.xl
                 foreground: root.foreground
@@ -258,7 +286,7 @@ Panel {
 
               // Installing state with progress bar
               CursorSurface {
-                visible: !!service ? (!!service.installProcess && service.installProcess.running) : false
+                visible: !!service && service.installing
                 width: parent.width
                 implicitHeight: installingBlock.implicitHeight + Style.spacing.xl
                 foreground: root.foreground
@@ -295,7 +323,7 @@ Panel {
 
               // Installed state — show version
               CursorSurface {
-                visible: !!service ? (!!service.whichProcess && !service.whichProcess.running && service.statusText !== "amneziawg-go not installed") : false
+                visible: !!service && service.installChecked && service.amneziaInstalled && !service.installing
                 width: parent.width
                 implicitHeight: installedBlock.implicitHeight + Style.spacing.xl
                 foreground: root.foreground
@@ -337,7 +365,7 @@ Panel {
               spacing: Style.space(8)
 
               PanelSectionHeader {
-                text: "Profiles (" + profiles.length + ")"
+                text: "Profiles (" + root.profileCount + ")"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
               }
@@ -353,25 +381,26 @@ Panel {
                 wrapMode: Text.WordWrap
               }
 
-              // Profile list
-              ListView {
-                visible: profiles.length > 0
-                id: profileList
+              // Profile list. A Column+Repeater rather than a ListView: the
+              // panel is already inside a Flickable, and a ListView sized from
+              // its own contentHeight never leaves a zero-height viewport to
+              // create its delegates in.
+              Column {
+                visible: root.profileCount > 0
                 width: parent.width
-                height: Math.min(contentHeight, Style.space(240))
-                clip: true
                 spacing: Style.space(6)
-                model: profiles
-                reuseItems: true
-                boundsBehavior: Flickable.StopAtBounds
 
-                delegate: ProfileRow {
-                  required property var modelData
-                  required property int index
-                  width: profileList.width
-                  profileName: modelData
-                  isActive: currentProfile && currentProfile.name === modelData
-                  rowIndex: index
+                Repeater {
+                  model: profiles
+
+                  delegate: ProfileRow {
+                    required property var modelData
+                    required property int index
+                    width: profilesSection.width
+                    profileName: modelData
+                    isActive: currentProfile && currentProfile.name === modelData
+                    rowIndex: index
+                  }
                 }
               }
             }
@@ -420,10 +449,7 @@ Panel {
                   tooltipText: "Paste from clipboard"
                   foreground: root.foreground
                   fontFamily: root.fontFamily
-                  onClicked: {
-                    var clip = Quickshell.clipboard()
-                    if (clip) vpnKeyInput = clip.text || ""
-                  }
+                  onClicked: pasteFromClipboard()
                 }
 
                 PanelActionButton {
@@ -480,6 +506,16 @@ Panel {
 
     implicitHeight: inner.implicitHeight + Style.spacing.xl
 
+    // Row-level click target, declared before the content so the action
+    // buttons in `inner` stay on top and keep receiving their own clicks.
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: root.setProfileCursor(rowIndex)
+      onClicked: if (profileName !== "") service.loadProfile(profileName)
+    }
+
     Row {
       id: inner
       anchors.left: parent.left
@@ -514,40 +550,22 @@ Panel {
       PanelActionButton {
         id: selectBtn
         iconText: "󰆏"
+        tooltipText: "Select this profile"
         foreground: root.dim
         fontFamily: root.fontFamily
         enabled: !isActive && !service.busy
         onClicked: service.loadProfile(profileName)
-
-        PanelToolTip {
-          visible: containsMouse
-          text: "Select this profile"
-          fontFamily: root.fontFamily
-        }
       }
 
       PanelActionButton {
         id: deleteBtn
         iconText: "󰆴"
+        tooltipText: "Delete profile '" + profileName + "'"
         foreground: isActive ? root.dim : root.urgent
         fontFamily: root.fontFamily
         enabled: !service.busy
         onClicked: service.deleteProfile(profileName)
-
-        PanelToolTip {
-          visible: containsMouse
-          text: "Delete profile '" + profileName + "'"
-          fontFamily: root.fontFamily
-        }
       }
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onEntered: root.setProfileCursor(rowIndex)
-      onClicked: if (profileName !== "") service.loadProfile(profileName)
     }
   }
 }
