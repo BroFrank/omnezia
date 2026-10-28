@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Block direct work on main and require the manual verification gate.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+fail() { printf '\n✖ pre-commit: %s\n' "$*" >&2; exit 1; }
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+[[ -n "$branch" ]] || fail "detached HEAD; create a branch first"
+[[ "$branch" != "main" ]] || fail "direct commits to main are forbidden.
+  Create a branch first: git switch -c feat/<slug>"
+
+if [[ "${OMNEZIA_VERIFIED:-}" != "1" && "${OMNEZIA_RELEASE:-}" != "1" ]]; then
+  fail "manual verification gate is closed.
+  Runtime changes: run scripts/dev-install.sh, ask the user to test docs/manual-test.md,
+  then commit with: scripts/commit.sh --verified -m \"...\"
+  Docs/tooling changes: use scripts/commit.sh without --verified.
+  Raw 'git commit' is not allowed."
+fi
+
+"$ROOT/scripts/check.sh"
+
+mapfile -t staged < <(git diff --cached --name-only --diff-filter=ACMR)
+[[ ${#staged[@]} -gt 0 ]] || fail "no staged files"
+
+for file in "${staged[@]}"; do
+  case "$file" in
+    *.example.conf) ;;
+    *.conf|profiles/*|*/profiles/*)
+      fail "VPN profiles and WireGuard configs must not be committed: $file"
+      ;;
+  esac
+
+  size="$(git cat-file -s ":$file" 2>/dev/null || echo 0)"
+  if (( size > 2097152 )); then
+    fail "file is larger than 2 MB: $file"
+  fi
+
+  if ! grep -Iq . < <(git show ":$file" 2>/dev/null); then
+    continue
+  fi
+
+  content="$(git show ":$file" 2>/dev/null || true)"
+
+  if grep -qE 'BEGIN ([A-Z]+ )?PRIVATE KEY' <<<"$content"; then
+    fail "PEM private key detected in: $file"
+  fi
+
+  if grep -qE 'PrivateKey[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9+/]{43}=' <<<"$content"; then
+    if ! grep -qiE 'your-|example|placeholder|redacted|\.\.\.|<[a-z-]*key' <<<"$content"; then
+      fail "WireGuard/AmneziaWG private key detected in: $file"
+    fi
+  fi
+
+  if grep -qE '(ghp_|github_pat_|sk-)[A-Za-z0-9_]{20,}' <<<"$content"; then
+    fail "access token detected in: $file"
+  fi
+done
+
+printf '✔ pre-commit checks passed\n'

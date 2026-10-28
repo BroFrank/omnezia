@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-tag:
+    name: verify-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify tag matches manifest
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(jq -r '.version' manifest.json)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match manifest version ${version}"
+            exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} matches manifest version ${version}"
+
+      - name: Validate repository
+        run: ./scripts/check.sh

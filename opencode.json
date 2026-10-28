@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permissions": [
+    { "action": "shell", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "git commit *", "effect": "deny" },
+    { "action": "shell", "resource": "git -C * commit *", "effect": "deny" },
+    { "action": "shell", "resource": "git push *", "effect": "deny" },
+    { "action": "shell", "resource": "git -C * push *", "effect": "deny" },
+    { "action": "shell", "resource": "git tag *", "effect": "deny" },
+    { "action": "shell", "resource": "git merge *", "effect": "deny" },
+    { "action": "shell", "resource": "gh pr merge *", "effect": "deny" },
+    { "action": "shell", "resource": "gh release *", "effect": "deny" },
+    { "action": "shell", "resource": "scripts/commit.sh *", "effect": "allow" },
+    { "action": "shell", "resource": "scripts/mr.sh *", "effect": "allow" },
+    { "action": "shell", "resource": "scripts/release.sh *", "effect": "allow" }
+  ]
+}
